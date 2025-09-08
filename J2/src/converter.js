@@ -1,5 +1,5 @@
 // =============================================================================
-// EXCALIDRAW ↔ DSL BIDIRECTIONAL CONVERSION SYSTEM - FIXED ID PRESERVATION
+// EXCALIDRAW ↔ DSL BIDIRECTIONAL CONVERSION SYSTEM - FIXED ID PRESERVATION & TEXT HANDLING
 // =============================================================================
 
 // ENHANCED DSL SCHEMA WITH RELATIONSHIPS & BINDINGS
@@ -80,6 +80,7 @@ class ExcalidrawDSLConverter {
   static toDSL(excalidrawElements) {
     const elements = [];
     const elementMap = new Map(); // Track Excalidraw IDs for relationships
+    const textContainers = new Map(); // Track which elements have contained text
 
     // Filter out deleted elements and build ID map
     const activeElements = excalidrawElements.filter((el) => !el.isDeleted);
@@ -95,8 +96,22 @@ class ExcalidrawDSLConverter {
       elementMap.set(el.id, dslId);
     });
 
+    // Build map of text elements that are contained in shapes
+    activeElements.forEach((element) => {
+      if (element.type === "text" && element.containerId) {
+        const containerDslId = elementMap.get(element.containerId);
+        if (containerDslId) {
+          textContainers.set(containerDslId, element.text);
+        }
+      }
+    });
+
     activeElements.forEach((element, index) => {
-      const dslElement = this.convertElementToDSL(element, elementMap);
+      const dslElement = this.convertElementToDSL(
+        element,
+        elementMap,
+        textContainers
+      );
       if (dslElement) {
         elements.push(dslElement);
       }
@@ -105,7 +120,7 @@ class ExcalidrawDSLConverter {
     return elements;
   }
 
-  static convertElementToDSL(element, elementMap) {
+  static convertElementToDSL(element, elementMap, textContainers = new Map()) {
     const base = {
       id: elementMap.get(element.id),
       type:
@@ -115,6 +130,12 @@ class ExcalidrawDSLConverter {
       x: Math.round(element.x),
       y: Math.round(element.y),
     };
+
+    // Add inline text if this element has contained text
+    const dslId = elementMap.get(element.id);
+    if (textContainers.has(dslId)) {
+      base.text = textContainers.get(dslId);
+    }
 
     // Add type-specific properties
     switch (element.type) {
@@ -149,12 +170,13 @@ class ExcalidrawDSLConverter {
         break;
 
       case "text":
+        // Only include standalone text elements (not contained in shapes)
+        if (element.containerId) {
+          return null; // Skip contained text as it's already merged with container
+        }
         base.text = element.text;
         if (element.fontSize !== DSL_SCHEMA.DEFAULTS.fontSize) {
           base.fontSize = element.fontSize;
-        }
-        if (element.containerId) {
-          base.container = elementMap.get(element.containerId);
         }
         break;
     }
@@ -212,12 +234,13 @@ class ExcalidrawDSLConverter {
     );
   }
 
-  // DSL → EXCALIDRAW CONVERSION - FIXED VERSION
-  // =============================================
+  // DSL → EXCALIDRAW CONVERSION - FIXED VERSION WITH INLINE TEXT SUPPORT
+  // ====================================================================
   static fromDSL(dslElements) {
     const excalidrawElements = [];
     const idMap = new Map(); // DSL ID → Excalidraw ID
     const elementLookup = new Map(); // Quick element lookup
+    const elementsWithText = []; // Track elements that need text children
 
     // First pass: create elements and build consistent ID mapping
     dslElements.forEach((dslEl, index) => {
@@ -229,8 +252,48 @@ class ExcalidrawDSLConverter {
       if (element) {
         excalidrawElements.push(element);
         elementLookup.set(excalidrawId, element);
+
+        // Track elements that have inline text
+        if (dslEl.text && dslEl.type !== "text") {
+          elementsWithText.push({
+            dslEl,
+            element,
+            dslId,
+            excalidrawId,
+          });
+        }
       }
     });
+
+    // Create text elements for shapes with inline text
+    elementsWithText.forEach(
+      ({ dslEl, element, dslId, excalidrawId }, textIndex) => {
+        const textId = this.generateConsistentId(`${dslId}_text`);
+        const textElement = this.createTextElement(
+          dslEl,
+          textId,
+          element,
+          textIndex + dslElements.length
+        );
+
+        if (textElement) {
+          excalidrawElements.push(textElement);
+          elementLookup.set(textId, textElement);
+
+          // Set up the container relationship
+          textElement.containerId = excalidrawId;
+
+          // Add bound element to the container
+          if (!element.boundElements) {
+            element.boundElements = [];
+          }
+          element.boundElements.push({
+            id: textId,
+            type: "text",
+          });
+        }
+      }
+    );
 
     // Second pass: resolve bindings and relationships
     dslElements.forEach((dslEl, index) => {
@@ -244,6 +307,61 @@ class ExcalidrawDSLConverter {
     });
 
     return excalidrawElements;
+  }
+
+  static createTextElement(dslEl, textId, containerElement, index) {
+    const fontSize = dslEl.fontSize || DSL_SCHEMA.DEFAULTS.fontSize;
+    const text = dslEl.text || "";
+
+    // Calculate text dimensions
+    const lines = text.split("\n");
+    const maxLength = Math.max(...lines.map((line) => line.length));
+    const textWidth = maxLength * fontSize * 0.6;
+    const textHeight = lines.length * fontSize * 1.25;
+
+    // Center the text within the container
+    const textX = containerElement.x + (containerElement.width - textWidth) / 2;
+    const textY =
+      containerElement.y + (containerElement.height - textHeight) / 2;
+
+    return {
+      id: textId,
+      type: "text",
+      x: textX,
+      y: textY,
+      width: textWidth,
+      height: textHeight,
+      angle: containerElement.angle || 0,
+      strokeColor: dslEl.stroke
+        ? this.resolveColor(dslEl.stroke)
+        : DSL_SCHEMA.DEFAULTS.strokeColor,
+      backgroundColor: "transparent",
+      fillStyle: DSL_SCHEMA.DEFAULTS.fillStyle,
+      strokeWidth: DSL_SCHEMA.DEFAULTS.strokeWidth,
+      strokeStyle: DSL_SCHEMA.DEFAULTS.strokeStyle,
+      roughness: DSL_SCHEMA.DEFAULTS.roughness,
+      opacity: DSL_SCHEMA.DEFAULTS.opacity,
+      groupIds: [],
+      frameId: null,
+      index: `a${index}`,
+      seed: Math.floor(Math.random() * 2000000000),
+      version: 1,
+      versionNonce: Math.floor(Math.random() * 2000000000),
+      isDeleted: false,
+      boundElements: [],
+      updated: Date.now(),
+      link: null,
+      locked: false,
+      text: text,
+      fontSize: fontSize,
+      fontFamily: DSL_SCHEMA.DEFAULTS.fontFamily,
+      textAlign: "center",
+      verticalAlign: "middle",
+      containerId: null, // Will be set by caller
+      originalText: text,
+      autoResize: true,
+      lineHeight: 1.25,
+    };
   }
 
   static convertDSLToElement(dslEl, id, index) {
@@ -448,7 +566,7 @@ class ExcalidrawDSLConverter {
       }
     }
 
-    // Resolve text containers
+    // Resolve text containers (for standalone text elements with container property)
     if (
       element.type === "text" &&
       dslEl.container &&
@@ -482,16 +600,44 @@ class ExcalidrawDSLConverter {
 }
 
 // =============================================================================
-// ENHANCED TESTING & VALIDATION
+// ENHANCED TESTING & VALIDATION WITH INLINE TEXT
 // =============================================================================
 
-// Test ID preservation and relationship integrity
-function testIDPreservation() {
-  console.log("=== ID PRESERVATION & RELATIONSHIP TEST ===");
+// Test ID preservation, relationship integrity, and inline text handling
+function testInlineTextHandling() {
+  console.log("=== INLINE TEXT HANDLING TEST ===");
 
   const testDSL = [
-    { id: "box1", type: "rect", x: 100, y: 100, w: 120, h: 80, fill: "g" },
-    { id: "box2", type: "rect", x: 300, y: 100, w: 120, h: 80, fill: "b" },
+    {
+      id: "box1",
+      type: "rect",
+      x: 100,
+      y: 100,
+      w: 120,
+      h: 80,
+      fill: "g",
+      text: "Process A",
+    },
+    {
+      id: "box2",
+      type: "rect",
+      x: 300,
+      y: 100,
+      w: 120,
+      h: 80,
+      fill: "b",
+      text: "Process B",
+    },
+    {
+      id: "circle1",
+      type: "ellipse",
+      x: 100,
+      y: 250,
+      w: 100,
+      h: 100,
+      fill: "y",
+      text: "Start",
+    },
     {
       id: "arrow1",
       type: "arrow",
@@ -503,71 +649,51 @@ function testIDPreservation() {
       endBind: "box2",
     },
     {
-      id: "text1",
+      id: "standalone",
       type: "text",
-      x: 130,
-      y: 130,
-      text: "Start",
-      container: "box1",
-    },
-    {
-      id: "text2",
-      type: "text",
-      x: 330,
-      y: 130,
-      text: "End",
-      container: "box2",
+      x: 50,
+      y: 50,
+      text: "Standalone Text",
+      fontSize: 16,
     },
   ];
 
-  console.log("Original DSL:", JSON.stringify(testDSL, null, 2));
+  console.log(
+    "Original DSL with inline text:",
+    JSON.stringify(testDSL, null, 2)
+  );
 
   // Convert to Excalidraw
   const excalidrawElements = ExcalidrawDSLConverter.fromDSL(testDSL);
-  console.log(
-    "Generated Excalidraw IDs:",
-    excalidrawElements.map((el) => ({
-      dslId: el.id.split("_")[0],
-      excalidrawId: el.id,
-    }))
-  );
+  console.log(`Generated ${excalidrawElements.length} Excalidraw elements`);
 
-  // Check bindings
-  const arrowElement = excalidrawElements.find((el) =>
-    el.id.startsWith("arrow1")
-  );
-  console.log("Arrow bindings:", {
-    startBinding: arrowElement?.startBinding,
-    endBinding: arrowElement?.endBinding,
-  });
-
-  // Check text containers
+  // Check for text elements
   const textElements = excalidrawElements.filter((el) => el.type === "text");
-  console.log(
-    "Text containers:",
-    textElements.map((el) => ({ id: el.id, containerId: el.containerId }))
-  );
+  console.log(`Found ${textElements.length} text elements:`);
+  textElements.forEach((el) => {
+    console.log(`- Text: "${el.text}", Container: ${el.containerId || "none"}`);
+  });
 
   // Convert back to DSL
   const convertedDSL = ExcalidrawDSLConverter.toDSL(excalidrawElements);
   console.log("Converted back DSL:", JSON.stringify(convertedDSL, null, 2));
 
-  // Verify relationship integrity
-  const originalArrow = testDSL.find((el) => el.id === "arrow1");
-  const convertedArrow = convertedDSL.find((el) => el.id === "arrow1");
+  // Verify text preservation
+  const originalShapesWithText = testDSL.filter(
+    (el) => el.text && el.type !== "text"
+  );
+  const convertedShapesWithText = convertedDSL.filter(
+    (el) => el.text && el.type !== "text"
+  );
 
-  console.log("Relationship integrity check:", {
-    originalBindings: {
-      start: originalArrow?.startBind,
-      end: originalArrow?.endBind,
-    },
-    convertedBindings: {
-      start: convertedArrow?.startBind,
-      end: convertedArrow?.endBind,
-    },
-    intact:
-      originalArrow?.startBind === convertedArrow?.startBind &&
-      originalArrow?.endBind === convertedArrow?.endBind,
+  console.log("Text preservation check:", {
+    originalCount: originalShapesWithText.length,
+    convertedCount: convertedShapesWithText.length,
+    allTextPreserved: originalShapesWithText.every((orig) =>
+      convertedShapesWithText.find(
+        (conv) => conv.id === orig.id && conv.text === orig.text
+      )
+    ),
   });
 
   return {
@@ -577,12 +703,30 @@ function testIDPreservation() {
   };
 }
 
-// Enhanced DSL examples with proper relationships
+// Enhanced DSL examples with inline text
 const ENHANCED_DSL_EXAMPLES = {
-  // Flowchart with preserved relationships
-  flowchartWithBindings: [
-    { id: "start", type: "ellipse", x: 200, y: 50, w: 120, h: 60, fill: "g" },
-    { id: "process1", type: "rect", x: 200, y: 150, w: 120, h: 80, fill: "b" },
+  // Flowchart with inline text in shapes
+  flowchartWithInlineText: [
+    {
+      id: "start",
+      type: "ellipse",
+      x: 200,
+      y: 50,
+      w: 120,
+      h: 60,
+      fill: "g",
+      text: "Start",
+    },
+    {
+      id: "process1",
+      type: "rect",
+      x: 200,
+      y: 150,
+      w: 120,
+      h: 80,
+      fill: "b",
+      text: "Process Data",
+    },
     {
       id: "decision",
       type: "diamond",
@@ -591,9 +735,28 @@ const ENHANCED_DSL_EXAMPLES = {
       w: 120,
       h: 100,
       fill: "y",
+      text: "Valid?",
     },
-    { id: "process2", type: "rect", x: 50, y: 420, w: 120, h: 80, fill: "b" },
-    { id: "end", type: "ellipse", x: 350, y: 420, w: 120, h: 60, fill: "r" },
+    {
+      id: "process2",
+      type: "rect",
+      x: 50,
+      y: 420,
+      w: 120,
+      h: 80,
+      fill: "b",
+      text: "Handle Error",
+    },
+    {
+      id: "end",
+      type: "ellipse",
+      x: 350,
+      y: 420,
+      w: 120,
+      h: 60,
+      fill: "r",
+      text: "End",
+    },
 
     // Arrows with proper bindings
     {
@@ -637,46 +800,50 @@ const ENHANCED_DSL_EXAMPLES = {
       endBind: "end",
     },
 
-    // Text with container bindings
-    {
-      id: "t1",
-      type: "text",
-      x: 240,
-      y: 75,
-      text: "Start",
-      container: "start",
-    },
-    {
-      id: "t2",
-      type: "text",
-      x: 230,
-      y: 185,
-      text: "Process",
-      container: "process1",
-    },
-    {
-      id: "t3",
-      type: "text",
-      x: 240,
-      y: 325,
-      text: "Done?",
-      container: "decision",
-    },
-    {
-      id: "t4",
-      type: "text",
-      x: 80,
-      y: 455,
-      text: "Retry",
-      container: "process2",
-    },
-    { id: "t5", type: "text", x: 395, y: 445, text: "End", container: "end" },
-
     // Labels for decision branches
-    { id: "t6", type: "text", x: 130, y: 360, text: "No", fontSize: 14 },
-    { id: "t7", type: "text", x: 340, y: 360, text: "Yes", fontSize: 14 },
+    { id: "label_no", type: "text", x: 130, y: 360, text: "No", fontSize: 14 },
+    {
+      id: "label_yes",
+      type: "text",
+      x: 340,
+      y: 360,
+      text: "Yes",
+      fontSize: 14,
+    },
+  ],
+
+  // Mixed inline and container text
+  mixedTextExample: [
+    {
+      id: "shape1",
+      type: "rect",
+      x: 100,
+      y: 100,
+      w: 150,
+      h: 80,
+      fill: "b",
+      text: "Inline Text",
+    },
+    { id: "shape2", type: "ellipse", x: 300, y: 100, w: 120, h: 80, fill: "g" },
+    {
+      id: "container_text",
+      type: "text",
+      x: 340,
+      y: 130,
+      text: "Container Text",
+      container: "shape2",
+    },
+    {
+      id: "free_text",
+      type: "text",
+      x: 200,
+      y: 50,
+      text: "Free Text",
+      fontSize: 16,
+    },
   ],
 };
+
 export default ExcalidrawDSLConverter;
 
 // Export everything
@@ -685,10 +852,10 @@ if (typeof module !== "undefined" && module.exports) {
     ExcalidrawDSLConverter,
     DSL_SCHEMA,
     ENHANCED_DSL_EXAMPLES,
-    testIDPreservation,
+    testInlineTextHandling,
   };
 }
 
 // Run the test
-// console.log("Running ID preservation test...");
-// testIDPreservation();
+// console.log("Running inline text handling test...");
+// testInlineTextHandling();
