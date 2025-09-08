@@ -1,0 +1,54 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  email     String   @unique
+  name      String?
+  chats     Chat[]
+  createdAt DateTime @default(now())
+}
+
+model Chat {
+  id        String     @id @default(auto()) @map("_id") @db.ObjectId
+  title     String?
+  user      User       @relation(fields: [userId], references: [id])
+  userId    String     @db.ObjectId
+  messages  Message[]
+  createdAt DateTime   @default(now())
+}
+
+model Message {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  chat      Chat     @relation(fields: [chatId], references: [id])
+  chatId    String   @db.ObjectId
+  role      String
+  text      String?
+  reply     String?
+  content   Json?
+  drawing   Drawing? 
+  createdAt DateTime @default(now())
+}
+
+model Drawing {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  message   Message  @relation(fields: [messageId], references: [id])
+  messageId String   @db.ObjectId @unique 
+  title     String?
+  data      Json
+  thumbnail String?
+  createdAt DateTime @default(now())
+}
