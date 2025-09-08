@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
+  "type": "module",
   "scripts": {
     "dev": "nodemon --watch src --exec tsx src/index.ts",
     "build": "tsup src/index.ts --format cjs,esm --dts",
@@ -19,6 +20,7 @@
     "typescript": "^5.9.2"
   },
   "dependencies": {
+    "clipboardy": "^4.0.0",
     "hono": "^4.9.6",
     "zod": "^4.1.5"
   }
