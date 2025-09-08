@@ -1,25 +1,22 @@
 // =============================================================================
-// EXCALIDRAW ↔ DSL CONVERSION SYSTEM
+// EXCALIDRAW ↔ DSL BIDIRECTIONAL CONVERSION SYSTEM - FIXED ID PRESERVATION
 // =============================================================================
 
-// DSL SCHEMA DEFINITION
-// =====================
+// ENHANCED DSL SCHEMA WITH RELATIONSHIPS & BINDINGS
+// =================================================
 const DSL_SCHEMA = {
-  // Ultra-compact format: [type, x, y, width, height, ...typeSpecificProps]
-  // Common props can be omitted (uses defaults)
-
-  // Shape Type Mappings (1 char each for max compression)
+  // Compact element types (preserving readability)
   TYPES: {
-    r: "rectangle", // [r, x, y, w, h, stroke?, fill?, strokeW?, round?]
-    e: "ellipse", // [e, x, y, w, h, stroke?, fill?, strokeW?]
-    d: "diamond", // [d, x, y, w, h, stroke?, fill?, strokeW?]
-    a: "arrow", // [a, x, y, endX, endY, stroke?, strokeW?]
-    l: "line", // [l, x, y, points[], stroke?, strokeW?]
-    f: "freedraw", // [f, x, y, points[], stroke?, strokeW?]
-    t: "text", // [t, x, y, text, fontSize?, fontFamily?, stroke?, align?]
+    rect: "rectangle",
+    ellipse: "ellipse",
+    diamond: "diamond",
+    arrow: "arrow",
+    line: "line",
+    freedraw: "freedraw",
+    text: "text",
   },
 
-  // Default values (omitted props use these)
+  // Default values (omitted in DSL to save tokens)
   DEFAULTS: {
     strokeColor: "#1e1e1e",
     backgroundColor: "transparent",
@@ -32,10 +29,10 @@ const DSL_SCHEMA = {
     fontFamily: 5,
     textAlign: "left",
     verticalAlign: "top",
-    roundness: null,
+    angle: 0,
   },
 
-  // Color shortcuts (1-2 chars)
+  // Color palette (ultra-compact)
   COLORS: {
     k: "#1e1e1e", // black
     w: "#ffffff", // white
@@ -44,162 +41,233 @@ const DSL_SCHEMA = {
     b: "#1971c2", // blue
     y: "#f59f00", // yellow
     p: "#9c36b5", // purple
+    o: "#fd7e14", // orange
     t: "transparent", // transparent
   },
 };
 
 // =============================================================================
-// CORE CONVERSION FUNCTIONS
+// BIDIRECTIONAL CONVERTER CLASS - FIXED VERSION
 // =============================================================================
 
 class ExcalidrawDSLConverter {
-  // Generate unique IDs
   static generateId() {
-    return Math.random().toString(36).substring(2, 15);
+    return (
+      Math.random().toString(36).substring(2, 15) +
+      Math.random().toString(36).substring(2, 15)
+    );
+  }
+
+  // Generate consistent ID from DSL ID
+  static generateConsistentId(dslId) {
+    // Create a consistent ID based on DSL ID but in Excalidraw format
+    const hash = this.simpleHash(dslId);
+    return `${dslId}_${hash}`;
+  }
+
+  static simpleHash(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = (hash << 5) - hash + char;
+      hash = hash & hash; // Convert to 32bit integer
+    }
+    return Math.abs(hash).toString(36).substring(0, 8);
   }
 
   // EXCALIDRAW → DSL CONVERSION
+  // ===========================
   static toDSL(excalidrawElements) {
-    const dslElements = [];
+    const elements = [];
+    const elementMap = new Map(); // Track Excalidraw IDs for relationships
 
-    excalidrawElements.forEach((element) => {
-      if (element.isDeleted) return; // Skip deleted elements
-
-      let dslElement;
-
-      switch (element.type) {
-        case "rectangle":
-          dslElement = [
-            "r",
-            element.x,
-            element.y,
-            element.width,
-            element.height,
-          ];
-          break;
-
-        case "ellipse":
-          dslElement = [
-            "e",
-            element.x,
-            element.y,
-            element.width,
-            element.height,
-          ];
-          break;
-
-        case "diamond":
-          dslElement = [
-            "d",
-            element.x,
-            element.y,
-            element.width,
-            element.height,
-          ];
-          break;
-
-        case "arrow":
-          const endX = element.x + element.points[1][0];
-          const endY = element.y + element.points[1][1];
-          dslElement = ["a", element.x, element.y, endX, endY];
-          break;
-
-        case "line":
-          dslElement = ["l", element.x, element.y, element.points];
-          break;
-
-        case "freedraw":
-          dslElement = ["f", element.x, element.y, element.points];
-          break;
-
-        case "text":
-          dslElement = ["t", element.x, element.y, element.text];
-          if (element.fontSize !== DSL_SCHEMA.DEFAULTS.fontSize) {
-            dslElement.push(element.fontSize);
-          }
-          break;
-
-        default:
-          console.warn(`Unknown element type: ${element.type}`);
-          return;
+    // Filter out deleted elements and build ID map
+    const activeElements = excalidrawElements.filter((el) => !el.isDeleted);
+    activeElements.forEach((el, index) => {
+      // Extract original DSL ID if it exists (from consistent ID format)
+      let dslId = `e${index}`;
+      if (el.id && el.id.includes("_")) {
+        const parts = el.id.split("_");
+        if (parts.length >= 2) {
+          dslId = parts[0];
+        }
       }
-
-      // Add non-default properties
-      this.addNonDefaultProps(dslElement, element);
-      dslElements.push(dslElement);
+      elementMap.set(el.id, dslId);
     });
 
-    return dslElements;
+    activeElements.forEach((element, index) => {
+      const dslElement = this.convertElementToDSL(element, elementMap);
+      if (dslElement) {
+        elements.push(dslElement);
+      }
+    });
+
+    return elements;
   }
 
-  // Add non-default properties to DSL element
-  static addNonDefaultProps(dslElement, element) {
-    const type = dslElement[0];
+  static convertElementToDSL(element, elementMap) {
+    const base = {
+      id: elementMap.get(element.id),
+      type:
+        Object.keys(DSL_SCHEMA.TYPES).find(
+          (k) => DSL_SCHEMA.TYPES[k] === element.type
+        ) || element.type,
+      x: Math.round(element.x),
+      y: Math.round(element.y),
+    };
+
+    // Add type-specific properties
+    switch (element.type) {
+      case "rectangle":
+      case "ellipse":
+      case "diamond":
+        base.w = Math.round(element.width);
+        base.h = Math.round(element.height);
+        break;
+
+      case "arrow":
+        if (element.points && element.points.length > 1) {
+          const endPoint = element.points[element.points.length - 1];
+          base.endX = Math.round(element.x + endPoint[0]);
+          base.endY = Math.round(element.y + endPoint[1]);
+        }
+        // Preserve bindings
+        if (element.startBinding) {
+          base.startBind = elementMap.get(element.startBinding.elementId);
+        }
+        if (element.endBinding) {
+          base.endBind = elementMap.get(element.endBinding.elementId);
+        }
+        break;
+
+      case "line":
+      case "freedraw":
+        if (element.points && element.points.length > 0) {
+          // Simplify points by removing very close ones
+          base.points = this.simplifyPoints(element.points);
+        }
+        break;
+
+      case "text":
+        base.text = element.text;
+        if (element.fontSize !== DSL_SCHEMA.DEFAULTS.fontSize) {
+          base.fontSize = element.fontSize;
+        }
+        if (element.containerId) {
+          base.container = elementMap.get(element.containerId);
+        }
+        break;
+    }
+
+    // Add non-default styling
+    this.addStylingProps(base, element);
+
+    return base;
+  }
+
+  static simplifyPoints(points, tolerance = 3) {
+    if (!points || points.length <= 2) return points;
+
+    const simplified = [points[0]];
+    for (let i = 1; i < points.length - 1; i++) {
+      const prev = points[i - 1];
+      const curr = points[i];
+      const next = points[i + 1];
+
+      // Keep point if it creates a significant direction change
+      const dist = Math.sqrt(
+        Math.pow(curr[0] - prev[0], 2) + Math.pow(curr[1] - prev[1], 2)
+      );
+      if (dist > tolerance) {
+        simplified.push(curr);
+      }
+    }
+    simplified.push(points[points.length - 1]);
+    return simplified;
+  }
+
+  static addStylingProps(base, element) {
     const defaults = DSL_SCHEMA.DEFAULTS;
 
-    // Add stroke color if different from default
     if (element.strokeColor !== defaults.strokeColor) {
-      dslElement.push(["s", element.strokeColor]);
+      base.stroke =
+        this.colorToShorthand(element.strokeColor) || element.strokeColor;
     }
-
-    // Add fill color if different from default
     if (element.backgroundColor !== defaults.backgroundColor) {
-      dslElement.push(["f", element.backgroundColor]);
+      base.fill =
+        this.colorToShorthand(element.backgroundColor) ||
+        element.backgroundColor;
     }
-
-    // Add stroke width if different from default
     if (element.strokeWidth !== defaults.strokeWidth) {
-      dslElement.push(["w", element.strokeWidth]);
+      base.strokeW = element.strokeWidth;
     }
-
-    // Add roundness if not null
-    if (element.roundness && element.roundness.type) {
-      dslElement.push(["r", element.roundness.type]);
+    if (element.angle !== 0) {
+      base.angle = Math.round((element.angle * 180) / Math.PI);
     }
   }
 
-  // DSL → EXCALIDRAW CONVERSION
+  static colorToShorthand(color) {
+    return Object.keys(DSL_SCHEMA.COLORS).find(
+      (k) => DSL_SCHEMA.COLORS[k] === color
+    );
+  }
+
+  // DSL → EXCALIDRAW CONVERSION - FIXED VERSION
+  // =============================================
   static fromDSL(dslElements) {
     const excalidrawElements = [];
+    const idMap = new Map(); // DSL ID → Excalidraw ID
+    const elementLookup = new Map(); // Quick element lookup
 
-    dslElements.forEach((dslElement, index) => {
-      const element = this.createExcalidrawElement(dslElement, index);
+    // First pass: create elements and build consistent ID mapping
+    dslElements.forEach((dslEl, index) => {
+      const dslId = dslEl.id || `e${index}`;
+      const excalidrawId = this.generateConsistentId(dslId);
+      idMap.set(dslId, excalidrawId);
+
+      const element = this.convertDSLToElement(dslEl, excalidrawId, index);
       if (element) {
         excalidrawElements.push(element);
+        elementLookup.set(excalidrawId, element);
       }
+    });
+
+    // Second pass: resolve bindings and relationships
+    dslElements.forEach((dslEl, index) => {
+      const dslId = dslEl.id || `e${index}`;
+      const excalidrawId = idMap.get(dslId);
+      const element = elementLookup.get(excalidrawId);
+
+      if (!element) return;
+
+      this.resolveRelationships(dslEl, element, idMap, elementLookup);
     });
 
     return excalidrawElements;
   }
 
-  // Create Excalidraw element from DSL
-  static createExcalidrawElement(dslElement, index) {
-    const [type, x, y, ...props] = dslElement;
-    const elementType = DSL_SCHEMA.TYPES[type];
-
-    if (!elementType) {
-      console.warn(`Unknown DSL type: ${type}`);
-      return null;
-    }
+  static convertDSLToElement(dslEl, id, index) {
+    const elementType = DSL_SCHEMA.TYPES[dslEl.type] || dslEl.type;
 
     // Base element structure
     const element = {
-      id: this.generateId(),
+      id: id, // Use the consistent ID generated from DSL ID
       type: elementType,
-      x: x,
-      y: y,
-      angle: 0,
-      strokeColor: DSL_SCHEMA.DEFAULTS.strokeColor,
-      backgroundColor: DSL_SCHEMA.DEFAULTS.backgroundColor,
+      x: dslEl.x || 0,
+      y: dslEl.y || 0,
+      angle: ((dslEl.angle || 0) * Math.PI) / 180,
+      strokeColor:
+        this.resolveColor(dslEl.stroke) || DSL_SCHEMA.DEFAULTS.strokeColor,
+      backgroundColor:
+        this.resolveColor(dslEl.fill) || DSL_SCHEMA.DEFAULTS.backgroundColor,
       fillStyle: DSL_SCHEMA.DEFAULTS.fillStyle,
-      strokeWidth: DSL_SCHEMA.DEFAULTS.strokeWidth,
+      strokeWidth: dslEl.strokeW || DSL_SCHEMA.DEFAULTS.strokeWidth,
       strokeStyle: DSL_SCHEMA.DEFAULTS.strokeStyle,
       roughness: DSL_SCHEMA.DEFAULTS.roughness,
       opacity: DSL_SCHEMA.DEFAULTS.opacity,
       groupIds: [],
       frameId: null,
       index: `a${index}`,
-      roundness: DSL_SCHEMA.DEFAULTS.roundness,
       seed: Math.floor(Math.random() * 2000000000),
       version: 1,
       versionNonce: Math.floor(Math.random() * 2000000000),
@@ -211,34 +279,39 @@ class ExcalidrawDSLConverter {
     };
 
     // Add type-specific properties
-    this.addTypeSpecificProps(element, elementType, props);
-
-    // Process additional properties (non-default values)
-    this.processAdditionalProps(element, props);
+    this.addTypeSpecificProperties(element, dslEl, elementType);
 
     return element;
   }
 
-  // Add type-specific properties
-  static addTypeSpecificProps(element, elementType, props) {
+  static resolveColor(colorRef) {
+    if (!colorRef) return null;
+    return DSL_SCHEMA.COLORS[colorRef] || colorRef;
+  }
+
+  static addTypeSpecificProperties(element, dslEl, elementType) {
     switch (elementType) {
       case "rectangle":
+        element.width = dslEl.w || 100;
+        element.height = dslEl.h || 100;
+        element.roundness = { type: 3 };
+        break;
+
       case "ellipse":
+        element.width = dslEl.w || 100;
+        element.height = dslEl.h || 100;
+        element.roundness = { type: 2 };
+        break;
+
       case "diamond":
-        element.width = props[0] || 100;
-        element.height = props[1] || 100;
-        if (elementType === "rectangle") {
-          element.roundness = { type: 3 };
-        } else if (elementType === "ellipse") {
-          element.roundness = { type: 2 };
-        } else {
-          element.roundness = { type: 2 };
-        }
+        element.width = dslEl.w || 100;
+        element.height = dslEl.h || 100;
+        element.roundness = { type: 2 };
         break;
 
       case "arrow":
-        const endX = props[0] || element.x + 100;
-        const endY = props[1] || element.y;
+        const endX = dslEl.endX || element.x + 100;
+        const endY = dslEl.endY || element.y;
         element.width = Math.abs(endX - element.x);
         element.height = Math.abs(endY - element.y);
         element.points = [
@@ -255,218 +328,367 @@ class ExcalidrawDSLConverter {
         break;
 
       case "line":
-      case "freedraw":
-        element.points = props[0] || [
+        element.points = dslEl.points || [
           [0, 0],
           [100, 0],
         ];
-        if (elementType === "line") {
-          element.roundness = { type: 2 };
-          element.startBinding = null;
-          element.endBinding = null;
-          element.startArrowhead = null;
-          element.endArrowhead = null;
-          element.lastCommittedPoint = null;
-        } else {
-          element.roundness = null;
-          element.pressures = [];
-          element.simulatePressure = true;
-          element.lastCommittedPoint = element.points[
-            element.points.length - 1
-          ] || [0, 0];
-        }
-        // Calculate bounds
-        const bounds = this.calculateBounds(element.points);
-        element.width = bounds.width;
-        element.height = bounds.height;
+        element.roundness = { type: 2 };
+        element.startBinding = null;
+        element.endBinding = null;
+        element.startArrowhead = null;
+        element.endArrowhead = null;
+        element.lastCommittedPoint = null;
+        this.calculateBounds(element);
+        break;
+
+      case "freedraw":
+        element.points = dslEl.points || [
+          [0, 0],
+          [50, 25],
+          [100, 0],
+        ];
+        element.roundness = null;
+        element.pressures = [];
+        element.simulatePressure = true;
+        element.lastCommittedPoint = element.points[element.points.length - 1];
+        this.calculateBounds(element);
         break;
 
       case "text":
-        element.text = props[0] || "Text";
-        element.fontSize = props[1] || DSL_SCHEMA.DEFAULTS.fontSize;
+        element.text = dslEl.text || "Text";
+        element.fontSize = dslEl.fontSize || DSL_SCHEMA.DEFAULTS.fontSize;
         element.fontFamily = DSL_SCHEMA.DEFAULTS.fontFamily;
         element.textAlign = DSL_SCHEMA.DEFAULTS.textAlign;
-        element.verticalAlign = DSL_SCHEMA.DEFAULTS.verticalAlign;
-        element.containerId = null;
+        element.verticalAlign = dslEl.container
+          ? "middle"
+          : DSL_SCHEMA.DEFAULTS.verticalAlign;
+        element.containerId = null; // Will be resolved in second pass
         element.originalText = element.text;
         element.autoResize = true;
         element.lineHeight = 1.25;
-        // Rough text size calculation
-        element.width = element.text.length * element.fontSize * 0.6;
-        element.height = element.fontSize * 1.25;
+
+        // Estimate text dimensions
+        const lines = element.text.split("\n");
+        const maxLength = Math.max(...lines.map((line) => line.length));
+        element.width = maxLength * element.fontSize * 0.6;
+        element.height = lines.length * element.fontSize * 1.25;
         break;
     }
   }
 
-  // Process additional properties (color overrides, etc.)
-  static processAdditionalProps(element, props) {
-    props.forEach((prop) => {
-      if (Array.isArray(prop)) {
-        const [key, value] = prop;
-        switch (key) {
-          case "s": // stroke color
-            element.strokeColor = value;
-            break;
-          case "f": // fill color
-            element.backgroundColor = value;
-            break;
-          case "w": // stroke width
-            element.strokeWidth = value;
-            break;
-          case "r": // roundness
-            element.roundness = { type: value };
-            break;
-        }
-      }
-    });
-  }
+  static calculateBounds(element) {
+    if (!element.points || element.points.length === 0) {
+      element.width = 0;
+      element.height = 0;
+      return;
+    }
 
-  // Calculate bounds for line/freedraw elements
-  static calculateBounds(points) {
-    if (!points || points.length === 0) return { width: 0, height: 0 };
+    let minX = element.points[0][0],
+      maxX = element.points[0][0];
+    let minY = element.points[0][1],
+      maxY = element.points[0][1];
 
-    let minX = points[0][0],
-      maxX = points[0][0];
-    let minY = points[0][1],
-      maxY = points[0][1];
-
-    points.forEach(([x, y]) => {
+    element.points.forEach(([x, y]) => {
       minX = Math.min(minX, x);
       maxX = Math.max(maxX, x);
       minY = Math.min(minY, y);
       maxY = Math.max(maxY, y);
     });
 
-    return {
-      width: Math.abs(maxX - minX),
-      height: Math.abs(maxY - minY),
-    };
+    element.width = Math.abs(maxX - minX);
+    element.height = Math.abs(maxY - minY);
+  }
+
+  // FIXED: Proper relationship resolution with bound element tracking
+  static resolveRelationships(dslEl, element, idMap, elementLookup) {
+    // Resolve arrow bindings
+    if (element.type === "arrow") {
+      if (dslEl.startBind && idMap.has(dslEl.startBind)) {
+        const targetId = idMap.get(dslEl.startBind);
+        const targetElement = elementLookup.get(targetId);
+
+        element.startBinding = {
+          elementId: targetId,
+          focus: 0,
+          gap: 1,
+        };
+
+        // Add this arrow to the target element's boundElements
+        if (targetElement) {
+          if (!targetElement.boundElements) {
+            targetElement.boundElements = [];
+          }
+          targetElement.boundElements.push({
+            id: element.id,
+            type: "arrow",
+          });
+        }
+      }
+
+      if (dslEl.endBind && idMap.has(dslEl.endBind)) {
+        const targetId = idMap.get(dslEl.endBind);
+        const targetElement = elementLookup.get(targetId);
+
+        element.endBinding = {
+          elementId: targetId,
+          focus: 0,
+          gap: 1,
+        };
+
+        // Add this arrow to the target element's boundElements
+        if (targetElement) {
+          if (!targetElement.boundElements) {
+            targetElement.boundElements = [];
+          }
+          targetElement.boundElements.push({
+            id: element.id,
+            type: "arrow",
+          });
+        }
+      }
+    }
+
+    // Resolve text containers
+    if (
+      element.type === "text" &&
+      dslEl.container &&
+      idMap.has(dslEl.container)
+    ) {
+      const containerId = idMap.get(dslEl.container);
+      const containerElement = elementLookup.get(containerId);
+
+      element.containerId = containerId;
+      element.textAlign = "center";
+      element.verticalAlign = "middle";
+
+      // Add this text to the container's boundElements
+      if (containerElement) {
+        if (!containerElement.boundElements) {
+          containerElement.boundElements = [];
+        }
+        containerElement.boundElements.push({
+          id: element.id,
+          type: "text",
+        });
+
+        // Center the text within the container
+        element.x =
+          containerElement.x + (containerElement.width - element.width) / 2;
+        element.y =
+          containerElement.y + (containerElement.height - element.height) / 2;
+      }
+    }
   }
 }
 
 // =============================================================================
-// USAGE EXAMPLES
+// ENHANCED TESTING & VALIDATION
 // =============================================================================
 
-// Example DSL representations
-const EXAMPLE_DSL = {
-  // Ultra-compact shapes
-  simpleShapes: [
-    ["r", 100, 100, 200, 150], // Rectangle at (100,100), 200x150
-    ["e", 400, 200, 150, 150], // Circle at (400,200), 150x150
-    ["d", 200, 300, 100, 100], // Diamond at (200,300), 100x100
-  ],
+// Test ID preservation and relationship integrity
+function testIDPreservation() {
+  console.log("=== ID PRESERVATION & RELATIONSHIP TEST ===");
 
-  // Shapes with custom colors
-  coloredShapes: [
-    ["r", 50, 50, 100, 100, ["s", "r"], ["f", "y"]], // Red stroke, yellow fill
-    ["e", 200, 50, 80, 80, ["s", "b"]], // Blue stroke
-  ],
+  const testDSL = [
+    { id: "box1", type: "rect", x: 100, y: 100, w: 120, h: 80, fill: "g" },
+    { id: "box2", type: "rect", x: 300, y: 100, w: 120, h: 80, fill: "b" },
+    {
+      id: "arrow1",
+      type: "arrow",
+      x: 220,
+      y: 140,
+      endX: 300,
+      endY: 140,
+      startBind: "box1",
+      endBind: "box2",
+    },
+    {
+      id: "text1",
+      type: "text",
+      x: 130,
+      y: 130,
+      text: "Start",
+      container: "box1",
+    },
+    {
+      id: "text2",
+      type: "text",
+      x: 330,
+      y: 130,
+      text: "End",
+      container: "box2",
+    },
+  ];
 
-  // Lines and arrows
-  connections: [
-    ["a", 100, 200, 300, 250], // Arrow from (100,200) to (300,250)
-    [
-      "l",
-      50,
-      300,
-      [
-        [0, 0],
-        [100, 50],
-        [150, 0],
-      ],
-    ], // Multi-segment line
-  ],
+  console.log("Original DSL:", JSON.stringify(testDSL, null, 2));
 
-  // Text elements
-  text: [
-    ["t", 100, 400, "Hello World"], // Text at (100,400)
-    ["t", 200, 450, "Big Text", 32], // Larger text
-  ],
+  // Convert to Excalidraw
+  const excalidrawElements = ExcalidrawDSLConverter.fromDSL(testDSL);
+  console.log(
+    "Generated Excalidraw IDs:",
+    excalidrawElements.map((el) => ({
+      dslId: el.id.split("_")[0],
+      excalidrawId: el.id,
+    }))
+  );
 
-  // Complex drawing (50+ elements in minimal tokens)
-  grid: Array.from({ length: 10 }, (_, i) =>
-    Array.from({ length: 5 }, (_, j) => ["r", i * 60 + 10, j * 40 + 10, 50, 30])
-  ).flat(),
+  // Check bindings
+  const arrowElement = excalidrawElements.find((el) =>
+    el.id.startsWith("arrow1")
+  );
+  console.log("Arrow bindings:", {
+    startBinding: arrowElement?.startBinding,
+    endBinding: arrowElement?.endBinding,
+  });
+
+  // Check text containers
+  const textElements = excalidrawElements.filter((el) => el.type === "text");
+  console.log(
+    "Text containers:",
+    textElements.map((el) => ({ id: el.id, containerId: el.containerId }))
+  );
+
+  // Convert back to DSL
+  const convertedDSL = ExcalidrawDSLConverter.toDSL(excalidrawElements);
+  console.log("Converted back DSL:", JSON.stringify(convertedDSL, null, 2));
+
+  // Verify relationship integrity
+  const originalArrow = testDSL.find((el) => el.id === "arrow1");
+  const convertedArrow = convertedDSL.find((el) => el.id === "arrow1");
+
+  console.log("Relationship integrity check:", {
+    originalBindings: {
+      start: originalArrow?.startBind,
+      end: originalArrow?.endBind,
+    },
+    convertedBindings: {
+      start: convertedArrow?.startBind,
+      end: convertedArrow?.endBind,
+    },
+    intact:
+      originalArrow?.startBind === convertedArrow?.startBind &&
+      originalArrow?.endBind === convertedArrow?.endBind,
+  });
+
+  return {
+    original: testDSL,
+    excalidraw: excalidrawElements,
+    converted: convertedDSL,
+  };
+}
+
+// Enhanced DSL examples with proper relationships
+const ENHANCED_DSL_EXAMPLES = {
+  // Flowchart with preserved relationships
+  flowchartWithBindings: [
+    { id: "start", type: "ellipse", x: 200, y: 50, w: 120, h: 60, fill: "g" },
+    { id: "process1", type: "rect", x: 200, y: 150, w: 120, h: 80, fill: "b" },
+    {
+      id: "decision",
+      type: "diamond",
+      x: 200,
+      y: 280,
+      w: 120,
+      h: 100,
+      fill: "y",
+    },
+    { id: "process2", type: "rect", x: 50, y: 420, w: 120, h: 80, fill: "b" },
+    { id: "end", type: "ellipse", x: 350, y: 420, w: 120, h: 60, fill: "r" },
+
+    // Arrows with proper bindings
+    {
+      id: "a1",
+      type: "arrow",
+      x: 260,
+      y: 110,
+      endX: 260,
+      endY: 150,
+      startBind: "start",
+      endBind: "process1",
+    },
+    {
+      id: "a2",
+      type: "arrow",
+      x: 260,
+      y: 230,
+      endX: 260,
+      endY: 280,
+      startBind: "process1",
+      endBind: "decision",
+    },
+    {
+      id: "a3",
+      type: "arrow",
+      x: 200,
+      y: 340,
+      endX: 110,
+      endY: 420,
+      startBind: "decision",
+      endBind: "process2",
+    },
+    {
+      id: "a4",
+      type: "arrow",
+      x: 320,
+      y: 340,
+      endX: 410,
+      endY: 420,
+      startBind: "decision",
+      endBind: "end",
+    },
+
+    // Text with container bindings
+    {
+      id: "t1",
+      type: "text",
+      x: 240,
+      y: 75,
+      text: "Start",
+      container: "start",
+    },
+    {
+      id: "t2",
+      type: "text",
+      x: 230,
+      y: 185,
+      text: "Process",
+      container: "process1",
+    },
+    {
+      id: "t3",
+      type: "text",
+      x: 240,
+      y: 325,
+      text: "Done?",
+      container: "decision",
+    },
+    {
+      id: "t4",
+      type: "text",
+      x: 80,
+      y: 455,
+      text: "Retry",
+      container: "process2",
+    },
+    { id: "t5", type: "text", x: 395, y: 445, text: "End", container: "end" },
+
+    // Labels for decision branches
+    { id: "t6", type: "text", x: 130, y: 360, text: "No", fontSize: 14 },
+    { id: "t7", type: "text", x: 340, y: 360, text: "Yes", fontSize: 14 },
+  ],
 };
-
-// Test the converter
-console.log("=== DSL to Excalidraw Test ===");
-const testDSL = [
-  ["r", 100, 100, 200, 150],
-  ["e", 400, 200, 150, 150, ["s", "#e03131"]],
-  ["a", 300, 150, 400, 200],
-  ["t", 150, 300, "Sample Text"],
-];
-
-// const excalidrawElements = ExcalidrawDSLConverter.fromDSL(testDSL);
-// console.log("Generated Excalidraw elements:", excalidrawElements);
-
-// const backToDSL = ExcalidrawDSLConverter.toDSL(excalidrawElements);
-// console.log("Converted back to DSL:", backToDSL);
-
-// =============================================================================
-// DSL GENERATION PROMPT
-// =============================================================================
-
-const DSL_GENERATION_PROMPT = `
-You are an Excalidraw DSL generator. Convert user descriptions into ultra-compact DSL format.
-
-DSL FORMAT REFERENCE:
-- Rectangle: ['r', x, y, width, height, ...props]
-- Circle/Ellipse: ['e', x, y, width, height, ...props]  
-- Diamond: ['d', x, y, width, height, ...props]
-- Arrow: ['a', startX, startY, endX, endY, ...props]
-- Line: ['l', startX, startY, [[x1,y1], [x2,y2], ...], ...props]
-- Freedraw: ['f', startX, startY, [[x1,y1], [x2,y2], ...], ...props]
-- Text: ['t', x, y, 'text content', fontSize?, ...props]
-
-OPTIONAL PROPERTIES:
-- ['s', color] = stroke color ('k'=black, 'r'=red, 'g'=green, 'b'=blue, 'w'=white)
-- ['f', color] = fill color  
-- ['w', number] = stroke width
-- ['r', number] = roundness type
-
-GENERATION RULES:
-1. Use minimal coordinates and sizes
-2. Omit default properties  
-3. Use color shortcuts when possible
-4. For grids/patterns, use loops or arrays
-5. Position elements to avoid overlap
-6. Keep total token count under 500 for 50+ elements
-
-EXAMPLES:
-User: "Draw a simple house"
-Output: [
-  ['r', 100, 200, 200, 150],           // House base
-  ['l', 100, 200, [[0,0], [100,-50], [200,0]]], // Roof
-  ['r', 150, 250, 50, 80],             // Door
-  ['r', 120, 220, 30, 30],             // Window 1
-  ['r', 250, 220, 30, 30]              // Window 2
-]
-
-User: "Create a flowchart with 3 boxes connected by arrows"
-Output: [
-  ['r', 50, 100, 100, 50],             // Box 1
-  ['r', 200, 100, 100, 50],            // Box 2  
-  ['r', 350, 100, 100, 50],            // Box 3
-  ['a', 150, 125, 200, 125],           // Arrow 1->2
-  ['a', 300, 125, 350, 125],           // Arrow 2->3
-  ['t', 85, 120, 'Start'],             // Text 1
-  ['t', 225, 120, 'Process'],          // Text 2
-  ['t', 385, 120, 'End']               // Text 3
-]
-
-Now generate DSL for user input, optimizing for minimal tokens while maintaining clarity.
-`;
 export default ExcalidrawDSLConverter;
 
-// Export the converter and utilities
+// Export everything
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {
     ExcalidrawDSLConverter,
     DSL_SCHEMA,
-    EXAMPLE_DSL,
-    DSL_GENERATION_PROMPT,
+    ENHANCED_DSL_EXAMPLES,
+    testIDPreservation,
   };
 }
+
+// Run the test
+// console.log("Running ID preservation test...");
+// testIDPreservation();

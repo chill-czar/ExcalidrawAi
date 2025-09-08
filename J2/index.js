@@ -2,153 +2,194 @@ import  ExcalidrawDSLConverter  from "./src/converter.js";
 import clipboard from "clipboardy"; // ✅ Node-compatible clipboard
 
 const dslElement = [
-  // Head
-  ["e", 200, 200, 80, 80, ["s", "k"]], // Face
+  { id: "user", type: "rect", x: 100, y: 200, w: 100, h: 60, text: "User" },
+  {
+    id: "upload",
+    type: "rect",
+    x: 300,
+    y: 200,
+    w: 140,
+    h: 60,
+    text: "Upload Service",
+  },
+  {
+    id: "s3raw",
+    type: "rect",
+    x: 500,
+    y: 200,
+    w: 140,
+    h: 60,
+    text: "S3 Raw Bucket",
+  },
+  { id: "sqs", type: "rect", x: 700, y: 200, w: 120, h: 60, text: "SQS Queue" },
+  {
+    id: "ecs",
+    type: "rect",
+    x: 900,
+    y: 200,
+    w: 180,
+    h: 80,
+    text: "ECS Fargate\nTranscoder",
+  },
+  {
+    id: "s3hls",
+    type: "rect",
+    x: 1150,
+    y: 200,
+    w: 160,
+    h: 60,
+    text: "S3 Processed (HLS)",
+  },
+  {
+    id: "cf",
+    type: "rect",
+    x: 1400,
+    y: 200,
+    w: 160,
+    h: 60,
+    text: "CloudFront CDN",
+  },
+  {
+    id: "player",
+    type: "rect",
+    x: 1650,
+    y: 200,
+    w: 120,
+    h: 60,
+    text: "Video.js Player",
+  },
 
-  // Ears (triangles via freedraw)
-  [
-    "f",
-    180,
-    160,
-    [
-      [0, 0],
-      [20, -30],
-      [40, 0],
-    ],
-    ["s", "k"],
-  ], // Left ear
-  [
-    "f",
-    240,
-    160,
-    [
-      [0, 0],
-      [20, -30],
-      [40, 0],
-    ],
-    ["s", "k"],
-  ], // Right ear
+  {
+    id: "db",
+    type: "rect",
+    x: 900,
+    y: 400,
+    w: 160,
+    h: 60,
+    text: "MongoDB Metadata",
+  },
+  {
+    id: "auth",
+    type: "rect",
+    x: 500,
+    y: 400,
+    w: 140,
+    h: 60,
+    text: "OAuth Service",
+  },
+  {
+    id: "stripe",
+    type: "rect",
+    x: 1150,
+    y: 400,
+    w: 160,
+    h: 60,
+    text: "Stripe Billing",
+  },
 
-  // Eyes
-  ["e", 190, 200, 10, 15, ["s", "k"], ["f", "w"]], // Left eye
-  ["e", 230, 200, 10, 15, ["s", "k"], ["f", "w"]], // Right eye
-  ["t", 188, 198, ".", 12], // Left pupil
-  ["t", 228, 198, ".", 12], // Right pupil
+  {
+    id: "a1",
+    type: "arrow",
+    x: 200,
+    y: 230,
+    endX: 300,
+    endY: 230,
+    startBind: "user",
+    endBind: "upload",
+  },
+  {
+    id: "a2",
+    type: "arrow",
+    x: 440,
+    y: 230,
+    endX: 500,
+    endY: 230,
+    startBind: "upload",
+    endBind: "s3raw",
+  },
+  {
+    id: "a3",
+    type: "arrow",
+    x: 640,
+    y: 230,
+    endX: 700,
+    endY: 230,
+    startBind: "s3raw",
+    endBind: "sqs",
+  },
+  {
+    id: "a4",
+    type: "arrow",
+    x: 820,
+    y: 230,
+    endX: 900,
+    endY: 230,
+    startBind: "sqs",
+    endBind: "ecs",
+  },
+  {
+    id: "a5",
+    type: "arrow",
+    x: 1080,
+    y: 230,
+    endX: 1150,
+    endY: 230,
+    startBind: "ecs",
+    endBind: "s3hls",
+  },
+  {
+    id: "a6",
+    type: "arrow",
+    x: 1310,
+    y: 230,
+    endX: 1400,
+    endY: 230,
+    startBind: "s3hls",
+    endBind: "cf",
+  },
+  {
+    id: "a7",
+    type: "arrow",
+    x: 1560,
+    y: 230,
+    endX: 1650,
+    endY: 230,
+    startBind: "cf",
+    endBind: "player",
+  },
 
-  // Nose (small triangle)
-  [
-    "f",
-    210,
-    215,
-    [
-      [0, 0],
-      [5, 5],
-      [10, 0],
-    ],
-    ["s", "k"],
-  ],
-
-  // Mouth (small curve lines)
-  [
-    "l",
-    210,
-    225,
-    [
-      [0, 0],
-      [10, 5],
-    ],
-  ], // Right mouth
-  [
-    "l",
-    210,
-    225,
-    [
-      [0, 0],
-      [-10, 5],
-    ],
-  ], // Left mouth
-
-  // Whiskers
-  [
-    "l",
-    180,
-    215,
-    [
-      [0, 0],
-      [-25, 0],
-    ],
-  ], // Left whisker 1
-  [
-    "l",
-    180,
-    220,
-    [
-      [0, 0],
-      [-25, 5],
-    ],
-  ], // Left whisker 2
-  [
-    "l",
-    180,
-    210,
-    [
-      [0, 0],
-      [-25, -5],
-    ],
-  ], // Left whisker 3
-  [
-    "l",
-    240,
-    215,
-    [
-      [0, 0],
-      [25, 0],
-    ],
-  ], // Right whisker 1
-  [
-    "l",
-    240,
-    220,
-    [
-      [0, 0],
-      [25, 5],
-    ],
-  ], // Right whisker 2
-  [
-    "l",
-    240,
-    210,
-    [
-      [0, 0],
-      [25, -5],
-    ],
-  ], // Right whisker 3
-
-  // Body
-  ["e", 200, 300, 100, 120, ["s", "k"]], // Oval body
-
-  // Paws
-  ["e", 170, 380, 20, 20, ["s", "k"]], // Left paw
-  ["e", 230, 380, 20, 20, ["s", "k"]], // Right paw
-
-  // Tail (curved freedraw)
-  [
-    "f",
-    250,
-    320,
-    [
-      [0, 0],
-      [40, -20],
-      [60, 20],
-      [30, 40],
-    ],
-    ["s", "k"],
-  ],
-
-  // Text
-  ["t", 190, 430, "Cat", 16],
+  {
+    id: "ecs-db",
+    type: "arrow",
+    x: 990,
+    y: 280,
+    endX: 990,
+    endY: 400,
+    startBind: "ecs",
+    endBind: "db",
+  },
+  {
+    id: "user-auth",
+    type: "arrow",
+    x: 200,
+    y: 260,
+    endX: 500,
+    endY: 430,
+    startBind: "user",
+    endBind: "auth",
+  },
+  {
+    id: "player-stripe",
+    type: "arrow",
+    x: 1710,
+    y: 260,
+    endX: 1230,
+    endY: 400,
+    startBind: "player",
+    endBind: "stripe",
+  },
 ];
-;
+
 
 const excalidrawElements = ExcalidrawDSLConverter.fromDSL(dslElement);
 
