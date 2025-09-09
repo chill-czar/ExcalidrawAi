@@ -1,8 +1,8 @@
 import { configureStore } from "@reduxjs/toolkit";
-
+import currentExcalidrawReducer from "@/lib/slice/currentExcalidrawSlice"
 export const store = configureStore({
-    reducer: {
-      
+  reducer: {
+    currentExcalidraw: currentExcalidrawReducer
   },
 });
 
