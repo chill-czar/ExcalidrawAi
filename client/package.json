@@ -15,6 +15,7 @@
     "@prisma/client": "^6.15.0",
     "@radix-ui/react-slot": "^1.2.3",
     "@reduxjs/toolkit": "^2.9.0",
+    "@tanstack/react-query": "^5.87.1",
     "axios": "^1.11.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
