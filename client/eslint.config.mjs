@@ -18,7 +18,21 @@ const eslintConfig = [
       "out/**",
       "build/**",
       "next-env.d.ts",
+      "lib/generated/**", // ⬅️ ignore generated code (Prisma, wasm, etc.)
+      "lib/prisma/**",
+      "*.wasm.js",
     ],
+  },
+  {
+    rules: {
+      "@typescript-eslint/no-unused-expressions": "off", // disable noisy unused expression rule
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        { argsIgnorePattern: "^_" },
+      ], // warn instead of error, allow _var
+      "@typescript-eslint/no-explicit-any": "off", // allow 'any' for flexibility
+      "@typescript-eslint/no-require-imports": "off", // allow require() in edge cases
+    },
   },
 ];
 

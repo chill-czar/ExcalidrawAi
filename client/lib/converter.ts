@@ -327,7 +327,7 @@ class ExcalidrawDSLConverter {
       }
     });
 
-    activeElements.forEach((element, index) => {
+    activeElements.forEach((element) => {
       const dslElement = this.convertElementToDSL(
         element,
         elementMap,
@@ -1128,7 +1128,7 @@ export type {
 };
 
 // Export everything for CommonJS compatibility
-declare const module: any;
+
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {
     ExcalidrawDSLConverter,
