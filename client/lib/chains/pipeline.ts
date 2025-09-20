@@ -101,16 +101,22 @@ const validateInput = (input: string): AIDrawingResponse | null => {
   return null;
 };
 
-// ---------- Chains with Error Handling ----------
+// ---------- Main Classifier ----------
 const classifierPrompt = ChatPromptTemplate.fromTemplate(`
-You are a guardrailed classifier.
-Classify the user prompt into one of:
+You are an intent classifier.  
+Decide the intent of the user request.  
+Classify into one of:
 - create
 - edit
-- general
 - question
 - reference
-User prompt: {input}
+- general
+
+Rules:
+- Focus on meaning, not just keywords.
+- If unsure → general.
+
+User Input: {input}
 Answer with only the label.
 `);
 
@@ -118,51 +124,42 @@ const classifierChain = classifierPrompt
   .pipe(groqModel)
   .pipe(new StringOutputParser());
 
-const createTypePrompt = ChatPromptTemplate.fromTemplate(`
-You are a prompt identifier.
-Classify the following 'create' request into one of:
-- system_design
-- technical_diagram
-- general
-- drawing
-Prompt: {input}
-Answer with only the label.
+// ---------- Visualizability Classifier ----------
+const visualizabilityPrompt = ChatPromptTemplate.fromTemplate(`
+You are a semantic classifier. 
+Decide if the input can be represented as a diagram/drawing.
+
+Categories:
+- system_design (system architecture, workflows, infra diagrams)
+- technical_diagram (flowcharts, UML, ERD, ecosystems, process diagrams)
+- drawing (creative/artistic sketch)
+- not_visualizable (cannot be expressed visually, e.g., jokes, trivia, greetings)
+
+Rules:
+- Even if the input is a "question", check if it can be explained visually.
+- Example: "What is TypeScript?" → technical_diagram (ecosystem diagram)
+- Example: "Payment gateway architecture" → system_design
+- Example: "Tell me a joke" → not_visualizable
+
+User Input: {input}
+Answer with only one label.
 `);
 
-const createTypeChain = createTypePrompt
+const visualizabilityChain = visualizabilityPrompt
   .pipe(groqModel)
   .pipe(new StringOutputParser());
 
+// ---------- Optimization Prompts ----------
 const systemDesignPrompt = ChatPromptTemplate.fromTemplate(`
 You are an expert system designer and prompt optimizer.
-Your task is to transform a raw user description into a precise, structured prompt 
+Transform a raw user description into a structured prompt 
 for a DSL-based diagram generator (Excalidraw DSL).
 
-## Instructions
-1. Identify and **list all key elements** (components, entities, nodes).
-2. Describe the **relationships/flows** between elements (arrows, directions).
-3. Specify **content/labels** for each element.
-4. Suggest **layout flow** (e.g., top-to-bottom, left-to-right, grouped).
-5. Be clear and unambiguous — the DSL generator should directly translate it into shapes.
-
-## Output Requirements
-- List **all elements** (components, services, databases, APIs, users, etc.) with suggested shape type (rect, ellipse, diamond, text).
-- Define **relationships/flows** between elements (arrows with start → end).
-- Provide **labels/text** for each element.
-- Suggest **layout guidance** (top-to-bottom, left-to-right, grouped).
-- Keep the language precise, minimal, and structured.
-
-## Output Format
-Return a single optimized prompt in this structure:
-
-Elements:
-- [id]: [shape type] - [label/content]
-
-Flows:
-- [startId] → [endId]
-
-Layout:
-- [brief description of layout strategy]
+Steps:
+1. Identify all key elements (components, entities, nodes).
+2. Describe relationships/flows between elements.
+3. Specify labels/content.
+4. Suggest layout (top-to-bottom, left-to-right, grouped).
 
 User Input:
 {input}
@@ -170,7 +167,7 @@ User Input:
 
 const technicalDiagramPrompt = ChatPromptTemplate.fromTemplate(`
 You are an expert in technical diagrams.
-Generate an optimized prompt for a technical diagram based on:
+Generate an optimized prompt for a technical diagram:
 User Input: {input}
 `);
 
@@ -192,9 +189,10 @@ const drawingChain = drawingPrompt
   .pipe(groqModel)
   .pipe(new StringOutputParser());
 
+// ---------- DSL Generator ----------
 const dslPrompt = ChatPromptTemplate.fromTemplate(`
 You are a DSL generator.  
-Take the DslMaker Instruction & user's optimized prompt and convert it **directly into valid DSL JSON**.  
+Convert the optimized prompt into valid DSL JSON.  
 
 DslMaker Instructions: {dsl}
 Optimized Prompt: {optimized}
@@ -203,7 +201,7 @@ Optimized Prompt: {optimized}
 const dslParser = new JsonOutputParser<DSLJson>();
 const dslChain = dslPrompt.pipe(groqModel).pipe(dslParser);
 
-// ---------- Main Orchestration with Error Handling ----------
+// ---------- Main Orchestration ----------
 export const mainChain = RunnableLambda.from(
   async (input: { input: string }): Promise<AIDrawingResponse> => {
     try {
@@ -211,7 +209,7 @@ export const mainChain = RunnableLambda.from(
       const validationError = validateInput(input.input);
       if (validationError) return validationError;
 
-      // Classification
+      // Step 1: Main classification (for logging/future use)
       let classification: string;
       try {
         classification = await classifierChain.invoke({ input: input.input });
@@ -230,44 +228,40 @@ export const mainChain = RunnableLambda.from(
         return handleLLMError(error, "classification");
       }
 
-      if (classification !== "create") {
-        return {
-          success: true,
-          message: `Classification: ${classification}. No DSL generation needed.`,
-        };
-      }
-
-      // Sub-classification
+      // Step 2: Visualizability check
       let subtype: string;
       try {
-        subtype = await createTypeChain.invoke({ input: input.input });
+        subtype = await visualizabilityChain.invoke({ input: input.input });
         if (
-          ![
-            "system_design",
-            "technical_diagram",
-            "general",
-            "drawing",
-          ].includes(subtype)
+          !["system_design", "technical_diagram", "drawing", "not_visualizable"].includes(
+            subtype
+          )
         ) {
           return {
             success: false,
             type: "subclassification_error",
-            message: "Invalid subclassification result from AI.",
+            message: "Invalid visualizability result from AI.",
           };
         }
       } catch (error) {
-        return handleLLMError(error, "subclassification");
+        return handleLLMError(error, "visualizability");
       }
 
-      // Optimization
+      // If not visualizable → return early
+      if (subtype === "not_visualizable") {
+        return {
+          success: true,
+          message: `Classification: ${classification}/${subtype}. Not suitable for DSL generation.`,
+        };
+      }
+
+      // Step 3: Optimization
       let optimized: string;
       try {
         if (subtype === "system_design") {
           optimized = await systemDesignChain.invoke({ input: input.input });
         } else if (subtype === "technical_diagram") {
-          optimized = await technicalDiagramChain.invoke({
-            input: input.input,
-          });
+          optimized = await technicalDiagramChain.invoke({ input: input.input });
         } else {
           optimized = await drawingChain.invoke({ input: input.input });
         }
@@ -283,7 +277,7 @@ export const mainChain = RunnableLambda.from(
         return handleLLMError(error, "optimization");
       }
 
-      // DSL Generation
+      // Step 4: DSL Generation
       try {
         const dsl = await dslChain.invoke({
           dsl: DSL_PROMPT,
@@ -292,7 +286,6 @@ export const mainChain = RunnableLambda.from(
 
         console.log("Final DSL object:", dsl);
 
-        // Validate DSL structure
         if (!dsl || typeof dsl !== "object") {
           return {
             success: false,
