@@ -9,6 +9,7 @@ import type { AIDrawingResponse, DSLElement } from "@/types/ai";
 import { useDispatch } from "react-redux";
 import { setElements } from "@/lib/slice/currentExcalidrawSlice";
 import ExcalidrawDSLConverter from "@/lib/converter";
+import { toast } from "sonner"; // ✅ import Sonner
 
 export default function ChatInput() {
   const [message, setMessage] = useState("");
@@ -28,17 +29,23 @@ export default function ChatInput() {
               const elements = await ExcalidrawDSLConverter.fromDSL(
                 data.dsl as unknown as DSLElement[]
               );
-              console.log(elements);
               dispatch(setElements(elements));
+              toast.success("✅ Diagram generated successfully!");
             } else {
-              console.error("AI Drawing failed:", data.message);
+              toast.error("AI Drawing failed", {
+                description: data.message || "Unexpected error occurred.",
+              });
             }
-          } catch (error) {
-            console.error("Error processing DSL:", error);
+          } catch (error: any) {
+            toast.error("Error processing DSL", {
+              description: error?.message || "An unknown error occurred.",
+            });
           }
         },
-        onError: (err) => {
-          console.error("AI drawing failed:", err);
+        onError: (err: any) => {
+          toast.error("AI drawing request failed", {
+            description: err?.message || "Please try again later.",
+          });
         },
       }
     );
@@ -83,13 +90,6 @@ export default function ChatInput() {
           )}
         </Button>
       </div>
-
-      {/* Debug: show last DSL response
-      {dsl && (
-        <pre className="mt-2 p-2 text-xs bg-gray-100 rounded overflow-auto max-h-40">
-          {dsl}
-        </pre>
-      )} */}
     </div>
   );
 }
