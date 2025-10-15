@@ -7,7 +7,7 @@ export const j2Shape = z.object({
   size: z.tuple([z.number(), z.number()]).optional(),
   points: z.array(z.tuple([z.number(), z.number()])).optional(),
   text: z.string().optional(),
-  style: z.record(z.any()).optional(),
+  style: z.record(z.string(), z.any()).optional(),
   font: z
     .object({
       family: z.string().optional(),
