@@ -1,0 +1,279 @@
+{
+  "detectedModules": [
+    {
+      "name": "drawing",
+      "domain": "Drawing",
+      "description": "Handles AI-powered drawing generation requests, coordinates with pipeline",
+      "responsibilities": [
+        "API endpoint for drawing generation",
+        "Request/response handling",
+        "Error management",
+        "Client-side API integration"
+      ],
+      "sourceFiles": [
+        "app/api/ai/drawing/route.ts",
+        "lib/api/ai.ts",
+        "hooks/useAIDrawing.ts",
+        "types/ai.ts"
+      ],
+      "newStructure": {
+        "basePath": "modules/drawing",
+        "files": [
+          "controller.ts - API route handler (replaces app/api/ai/drawing/route.ts)",
+          "service.ts - Business logic for drawing generation",
+          "repo.ts - Cache access for drawing results",
+          "model.ts - Drawing domain types",
+          "validation.ts - Zod schemas for request/response",
+          "index.ts - Public exports"
+        ]
+      },
+      "dependencies": ["pipeline", "dsl", "common"],
+      "migrationComplexity": "MEDIUM",
+      "estimatedFiles": 6,
+      "riskLevel": "LOW"
+    },
+    {
+      "name": "pipeline",
+      "domain": "AI Pipeline",
+      "description": "Orchestrates AI processing steps: classification, optimization, DSL generation",
+      "responsibilities": [
+        "Input validation",
+        "Intent classification",
+        "Visualizability classification",
+        "Prompt optimization",
+        "DSL generation coordination"
+      ],
+      "sourceFiles": [
+        "lib/chains/pipeline.ts"
+      ],
+      "newStructure": {
+        "basePath": "modules/pipeline",
+        "files": [
+          "service.ts - Pipeline orchestration logic",
+          "classifier.ts - Classification chains (intent, visualizability)",
+          "optimizer.ts - Prompt optimization chains",
+          "generator.ts - DSL generation chain",
+          "model.ts - Pipeline types and interfaces",
+          "validation.ts - Input validation schemas",
+          "index.ts - Public exports"
+        ]
+      },
+      "dependencies": ["dsl", "common"],
+      "migrationComplexity": "HIGH",
+      "estimatedFiles": 7,
+      "riskLevel": "MEDIUM",
+      "notes": "Core AI logic - must preserve exact behavior"
+    },
+    {
+      "name": "dsl",
+      "domain": "DSL (Domain Specific Language)",
+      "description": "DSL schema, conversion between Excalidraw and DSL formats",
+      "responsibilities": [
+        "DSL schema definition",
+        "DSL prompt template",
+        "Bidirectional conversion (DSL ↔ Excalidraw)",
+        "Element type mappings",
+        "Color schema"
+      ],
+      "sourceFiles": [
+        "lib/prompts/dslPrompt.ts",
+        "lib/converter.ts"
+      ],
+      "newStructure": {
+        "basePath": "modules/dsl",
+        "files": [
+          "service.ts - Conversion operations",
+          "schema.ts - DSL schema and types",
+          "prompt.ts - DSL generation prompt template",
+          "converter.ts - Conversion logic (DSL ↔ Excalidraw)",
+          "model.ts - DSL domain types",
+          "validation.ts - DSL validation schemas",
+          "index.ts - Public exports"
+        ]
+      },
+      "dependencies": ["common"],
+      "migrationComplexity": "MEDIUM",
+      "estimatedFiles": 7,
+      "riskLevel": "LOW"
+    },
+    {
+      "name": "common",
+      "domain": "Common/Shared",
+      "description": "Shared utilities, types, and infrastructure",
+      "responsibilities": [
+        "Error handling",
+        "Logging",
+        "Type utilities",
+        "Constants"
+      ],
+      "sourceFiles": [
+        "lib/utils.ts"
+      ],
+      "newStructure": {
+        "basePath": "modules/common",
+        "files": [
+          "errors.ts - Error types and handlers",
+          "types.ts - Shared type definitions",
+          "utils.ts - Utility functions",
+          "constants.ts - Application constants",
+          "index.ts - Public exports"
+        ]
+      },
+      "dependencies": [],
+      "migrationComplexity": "LOW",
+      "estimatedFiles": 5,
+      "riskLevel": "LOW"
+    }
+  ],
+  "newInfrastructure": [
+    {
+      "name": "cache",
+      "path": "lib/cache.ts",
+      "description": "Memory-based caching with optional Redis adapter",
+      "implementation": "LRU cache (lru-cache package)",
+      "features": [
+        "Memory cache with configurable max size",
+        "TTL support",
+        "Redis adapter interface (disabled by default)",
+        "Cache key generation utilities"
+      ]
+    },
+    {
+      "name": "queryKeys",
+      "path": "lib/queryKeys.ts",
+      "description": "Centralized TanStack Query key factory",
+      "features": [
+        "Type-safe query key generation",
+        "Organized by module",
+        "Supports invalidation patterns"
+      ]
+    },
+    {
+      "name": "logger",
+      "path": "lib/logger.ts",
+      "description": "Structured logging utility",
+      "features": [
+        "Console-based logging",
+        "Log levels (debug, info, warn, error)",
+        "Contextual logging support"
+      ]
+    }
+  ],
+  "existingInfrastructure": {
+    "keep": [
+      {
+        "path": "config/axios.ts",
+        "reason": "HTTP client configuration - no changes needed"
+      },
+      {
+        "path": "config/store.ts",
+        "reason": "Redux store for Excalidraw state - UI concern, not business logic"
+      },
+      {
+        "path": "config/prisma.ts",
+        "reason": "Database client - may be used by future storage module"
+      },
+      {
+        "path": "providers/QueryProvider.tsx",
+        "reason": "React Query provider - UI setup, no changes needed"
+      },
+      {
+        "path": "providers/ReduxProvider.tsx",
+        "reason": "Redux provider - UI setup, no changes needed"
+      },
+      {
+        "path": "components/**",
+        "reason": "UI components - out of scope for backend refactoring"
+      }
+    ]
+  },
+  "migrationStrategy": {
+    "phase1": {
+      "name": "Infrastructure Setup",
+      "description": "Set up caching, query keys, and shared utilities",
+      "tasks": [
+        "Install lru-cache package",
+        "Create lib/cache.ts",
+        "Create lib/queryKeys.ts",
+        "Create lib/logger.ts",
+        "Set up modules/common"
+      ],
+      "prNumber": "PR-1",
+      "estimatedChanges": "~10 files"
+    },
+    "phase2": {
+      "name": "DSL Module Refactoring",
+      "description": "Refactor DSL schema and conversion logic",
+      "tasks": [
+        "Create modules/dsl structure",
+        "Move and refactor converter.ts",
+        "Move and refactor dslPrompt.ts",
+        "Add Zod validation schemas",
+        "Add module tests"
+      ],
+      "prNumber": "PR-2",
+      "estimatedChanges": "~15 files"
+    },
+    "phase3": {
+      "name": "Pipeline Module Refactoring",
+      "description": "Refactor AI pipeline logic",
+      "tasks": [
+        "Create modules/pipeline structure",
+        "Extract classifiers",
+        "Extract optimizers",
+        "Extract generator",
+        "Add service layer",
+        "Add validation schemas",
+        "Add module tests"
+      ],
+      "prNumber": "PR-3",
+      "estimatedChanges": "~20 files",
+      "notes": "Critical path - requires careful testing"
+    },
+    "phase4": {
+      "name": "Drawing Module Refactoring",
+      "description": "Refactor drawing API and integrate with new modules",
+      "tasks": [
+        "Create modules/drawing structure",
+        "Create controller (API route)",
+        "Create service layer",
+        "Create repository layer (with caching)",
+        "Add validation schemas",
+        "Update useAIDrawing hook",
+        "Add module tests"
+      ],
+      "prNumber": "PR-4",
+      "estimatedChanges": "~15 files"
+    },
+    "phase5": {
+      "name": "Testing & CI Setup",
+      "description": "Add comprehensive tests and CI pipeline",
+      "tasks": [
+        "Install Jest and testing dependencies",
+        "Add jest.config.js",
+        "Add tests for all modules",
+        "Create GitHub Actions workflow",
+        "Add smoke test scripts"
+      ],
+      "prNumber": "PR-5",
+      "estimatedChanges": "~30 files"
+    },
+    "phase6": {
+      "name": "Documentation & Verification",
+      "description": "Final documentation and verification",
+      "tasks": [
+        "Create architecture documentation",
+        "Add module READMEs",
+        "Update main README",
+        "Create smoke test scripts",
+        "Final verification report"
+      ],
+      "prNumber": "PR-6",
+      "estimatedChanges": "~10 files"
+    }
+  },
+  "totalEstimatedChanges": "~100 files",
+  "totalPRs": 6,
+  "estimatedDuration": "6-8 phases",
+  "breakingChanges": "NONE - All changes are internal refactoring"
+}

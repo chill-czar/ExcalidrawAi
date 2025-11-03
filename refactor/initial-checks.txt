@@ -1,0 +1,141 @@
+# Initial Baseline Checks
+Date: 2025-11-03
+Branch: tembo/refactor-modular-monolith
+
+## Repository Structure
+
+The project consists of:
+- /client - Next.js application (main focus)
+- /J2 - Converter utility package
+
+## Client Application Structure
+
+### Current Architecture
+```
+client/
+├── app/
+│   ├── api/ai/drawing/route.ts (API endpoint)
+│   ├── layout.tsx
+│   └── page.tsx
+├── components/
+│   ├── ui/ (button, textarea)
+│   ├── Excalidraw.tsx
+│   ├── ChatPanel.tsx
+│   └── ChatInput.tsx
+├── config/
+│   ├── axios.ts
+│   ├── prisma.ts
+│   └── store.ts (Redux)
+├── hooks/
+│   └── useAIDrawing.ts (TanStack Query hook)
+├── lib/
+│   ├── api/ai.ts (API client)
+│   ├── chains/pipeline.ts (AI processing pipeline)
+│   ├── prompts/dslPrompt.ts (DSL instructions)
+│   ├── slice/currentExcalidrawSlice.ts (Redux state)
+│   ├── converter.ts (DSL ↔ Excalidraw converter)
+│   └── utils.ts
+├── providers/
+│   ├── QueryProvider.tsx (TanStack Query setup)
+│   └── ReduxProvider.tsx (Redux setup)
+└── types/
+    └── ai.ts (Type definitions)
+```
+
+## Dependencies
+
+### Key Dependencies
+- Next.js 15.5.2 (App Router)
+- React 19.1.0
+- TanStack Query 5.87.1 (Already installed)
+- Redux Toolkit 2.9.0
+- Langchain 0.3.33
+- @langchain/groq 0.2.3
+- @excalidraw/excalidraw 0.18.0
+- Zod 3.25.76
+- Prisma 6.15.0
+
+### Notable Observations
+- TanStack Query is already installed and has a basic hook (useAIDrawing)
+- Redux is used for Excalidraw state management
+- No test framework installed yet
+- No caching layer implemented yet
+
+## Lint Status
+✅ Linting: PASSED (no errors)
+
+## Build Status
+⚠️  Build: REQUIRES GROQ_API_KEY environment variable
+- Build fails during page data collection without API key
+- This is expected behavior for API routes that initialize models
+
+## Current Features
+
+### API Routes
+- POST /api/ai/drawing - Generates drawings from prompts
+
+### Core Functionality
+1. AI Pipeline (lib/chains/pipeline.ts)
+   - Input validation
+   - Intent classification (create/edit/question/reference/general)
+   - Visualizability classification (system_design/technical_diagram/drawing/not_visualizable)
+   - Prompt optimization based on type
+   - DSL generation from optimized prompt
+
+2. Converter (lib/converter.ts)
+   - Bidirectional DSL ↔ Excalidraw conversion
+   - Supports: rectangles, ellipses, diamonds, arrows, lines, freedraw, text
+   - Handles inline text, bindings, and relationships
+   - ID preservation and consistency
+
+3. Client Integration
+   - TanStack Query hook for API calls
+   - Redux for Excalidraw state
+   - Type-safe API contracts
+
+## Identified Modules for Refactoring
+
+Based on code analysis:
+
+1. **Drawing Module**
+   - Source: /app/api/ai/drawing/route.ts, /lib/api/ai.ts, /hooks/useAIDrawing.ts
+   - Responsibility: Handle drawing generation requests and responses
+
+2. **Pipeline Module**
+   - Source: /lib/chains/pipeline.ts
+   - Responsibility: AI processing pipeline (classification, optimization, DSL generation)
+
+3. **DSL Module**
+   - Source: /lib/prompts/dslPrompt.ts, /lib/converter.ts
+   - Responsibility: DSL schema, conversion, and validation
+
+4. **State Module** (Optional - may keep as-is)
+   - Source: /lib/slice/currentExcalidrawSlice.ts, /config/store.ts
+   - Responsibility: Redux state management for Excalidraw
+
+## Refactoring Goals
+
+1. ✅ Module-based architecture
+2. ✅ Controller-Service-Repository pattern
+3. ✅ Caching layer (memory + optional Redis)
+4. ✅ TanStack Query integration (partially done)
+5. ✅ Zod validation schemas
+6. ⚠️  Test infrastructure (needs to be added)
+7. ⚠️  CI/CD pipeline (needs to be added)
+
+## Notes
+
+- No breaking changes allowed
+- All existing API shapes must be preserved
+- Environment variables cannot change
+- Git history must be preserved
+- Small incremental PRs (max 200 file changes)
+
+## Next Steps
+
+1. Create detected-modules.json with detailed module mapping
+2. Set up infrastructure (cache, query keys, validation)
+3. Refactor modules one at a time
+4. Add tests for each module
+5. Set up CI/CD
+6. Final verification and documentation
