@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Send, Loader2 } from "lucide-react";
 import { useAIDrawing } from "@/hooks/useAIDrawing";
-import type { AIDrawingResponse, DSLElement } from "@/types/ai";
+import type { AIDrawingResponse } from "@/types/ai";
+import type { DSLElement } from "@/lib/converter";
 import { useDispatch } from "react-redux";
 import { setElements } from "@/lib/slice/currentExcalidrawSlice";
 import ExcalidrawDSLConverter from "@/lib/converter";
@@ -26,8 +27,10 @@ export default function ChatInput() {
         onSuccess: async (data: AIDrawingResponse) => {
           try {
             if (data.success && data.dsl) {
+              // data.dsl contains { elements: DSLElement[] } structure
+              const dslElements = data.dsl.elements || data.dsl;
               const elements = await ExcalidrawDSLConverter.fromDSL(
-                data.dsl as unknown as DSLElement[]
+                dslElements as unknown as DSLElement[]
               );
               dispatch(setElements(elements));
               toast.success("✅ Diagram generated successfully!");
