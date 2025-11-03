@@ -2,6 +2,7 @@ import { LLMService } from "./llm.service";
 import { logger } from "@/core/logger";
 import type { AIDrawingResult } from "../models";
 import type { AIDrawingErrorType } from "../schemas";
+import { dslJsonSchema } from "../schemas";
 
 /**
  * AI Drawing Service
@@ -216,7 +217,23 @@ export class AIDrawingService {
         };
       }
 
-      return { success: true, dsl };
+      // Validate DSL against schema
+      const validation = dslJsonSchema.safeParse(dsl);
+      if (!validation.success) {
+        logger.warn("DSL validation failed:", validation.error);
+        return {
+          success: false,
+          error: {
+            success: false,
+            error: {
+              type: "dsl_generation_error",
+              message: `Invalid DSL format: ${validation.error.errors[0]?.message || "Schema validation failed"}`,
+            },
+          },
+        };
+      }
+
+      return { success: true, dsl: validation.data };
     } catch (error) {
       return {
         success: false,

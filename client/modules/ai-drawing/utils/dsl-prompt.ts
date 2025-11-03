@@ -55,32 +55,44 @@ export const DSL_PROMPT = `You are an expert at converting natural language desc
 - Group related elements with consistent spacing
 
 ## Response Format
-Respond with a JSON array of elements. Each element should be a clean, minimal object following the schema above. Omit default values to keep the DSL compact.
+Respond with a JSON object containing an "elements" array. The structure should be:
+\`\`\`json
+{
+  "elements": [
+    // array of element objects
+  ]
+}
+\`\`\`
+Each element should be a clean, minimal object following the schema above. Omit default values to keep the DSL compact.
 
 ## Example Patterns
 
 ### Simple Process Flow
 \`\`\`json
-[
-  {"id": "start", "type": "ellipse", "x": 100, "y": 50, "w": 100, "h": 60, "fill": "g", "text": "Start"},
-  {"id": "process", "type": "rect", "x": 100, "y": 150, "w": 120, "h": 80, "fill": "b", "text": "Process"},
-  {"id": "end", "type": "ellipse", "x": 100, "y": 280, "w": 100, "h": 60, "fill": "r", "text": "End"},
-  {"id": "a1", "type": "arrow", "x": 150, "y": 110, "endX": 150, "endY": 150, "startBind": "start", "endBind": "process"},
-  {"id": "a2", "type": "arrow", "x": 150, "y": 230, "endX": 150, "endY": 280, "startBind": "process", "endBind": "end"}
-]
+{
+  "elements": [
+    {"id": "start", "type": "ellipse", "x": 100, "y": 50, "w": 100, "h": 60, "fill": "g", "text": "Start"},
+    {"id": "process", "type": "rect", "x": 100, "y": 150, "w": 120, "h": 80, "fill": "b", "text": "Process"},
+    {"id": "end", "type": "ellipse", "x": 100, "y": 280, "w": 100, "h": 60, "fill": "r", "text": "End"},
+    {"id": "a1", "type": "arrow", "x": 150, "y": 110, "endX": 150, "endY": 150, "startBind": "start", "endBind": "process"},
+    {"id": "a2", "type": "arrow", "x": 150, "y": 230, "endX": 150, "endY": 280, "startBind": "process", "endBind": "end"}
+  ]
+}
 \`\`\`
 
 ### Decision Flow with Labels
 \`\`\`json
-[
-  {"id": "decision", "type": "diamond", "x": 200, "y": 100, "w": 120, "h": 100, "fill": "y", "text": "Valid?"},
-  {"id": "yes_path", "type": "rect", "x": 350, "y": 100, "w": 100, "h": 60, "fill": "g", "text": "Accept"},
-  {"id": "no_path", "type": "rect", "x": 50, "y": 100, "w": 100, "h": 60, "fill": "r", "text": "Reject"},
-  {"id": "a_yes", "type": "arrow", "x": 320, "y": 150, "endX": 350, "endY": 130, "startBind": "decision", "endBind": "yes_path"},
-  {"id": "a_no", "type": "arrow", "x": 200, "y": 150, "endX": 150, "endY": 130, "startBind": "decision", "endBind": "no_path"},
-  {"id": "yes_label", "type": "text", "x": 330, "y": 120, "text": "Yes", "fontSize": 14},
-  {"id": "no_label", "type": "text", "x": 170, "y": 120, "text": "No", "fontSize": 14}
-]
+{
+  "elements": [
+    {"id": "decision", "type": "diamond", "x": 200, "y": 100, "w": 120, "h": 100, "fill": "y", "text": "Valid?"},
+    {"id": "yes_path", "type": "rect", "x": 350, "y": 100, "w": 100, "h": 60, "fill": "g", "text": "Accept"},
+    {"id": "no_path", "type": "rect", "x": 50, "y": 100, "w": 100, "h": 60, "fill": "r", "text": "Reject"},
+    {"id": "a_yes", "type": "arrow", "x": 320, "y": 150, "endX": 350, "endY": 130, "startBind": "decision", "endBind": "yes_path"},
+    {"id": "a_no", "type": "arrow", "x": 200, "y": 150, "endX": 150, "endY": 130, "startBind": "decision", "endBind": "no_path"},
+    {"id": "yes_label", "type": "text", "x": 330, "y": 120, "text": "Yes", "fontSize": 14},
+    {"id": "no_label", "type": "text", "x": 170, "y": 120, "text": "No", "fontSize": 14}
+  ]
+}
 \`\`\`
 
 ## Instructions for Processing User Input
